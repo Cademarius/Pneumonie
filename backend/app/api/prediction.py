@@ -42,6 +42,7 @@ async def predict(
             output = model(input_tensor)
 
         probs = torch.softmax(output, dim=1)
+        print(f"Probabilities: {probs}")
         class_id = torch.argmax(probs, dim=1).item()
         confidence = probs[0, class_id].item()
         prediction_class = "PNEUMONIA" if class_id == 1 else "NORMAL"
