@@ -1,9 +1,8 @@
 "use client"
 
-import type React from "react"
 import { useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,8 +13,8 @@ import { Stethoscope, User, Mail, Lock, AlertCircle, CheckCircle } from "lucide-
 export default function RegisterPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
+    first_name: "",
+    last_name: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -25,19 +24,16 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }))
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setError("")
     setSuccess("")
+    setIsLoading(true)
 
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
+    if (!formData.first_name || !formData.last_name || !formData.email || !formData.password) {
       setError("Veuillez remplir tous les champs")
       setIsLoading(false)
       return
@@ -59,7 +55,13 @@ export default function RegisterPage() {
       const res = await fetch("http://127.0.0.1:8000/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: formData.email, password: formData.password })
+        body: JSON.stringify({
+          username: formData.email,
+          password: formData.password,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+        }),
       })
 
       if (!res.ok) {
@@ -67,14 +69,8 @@ export default function RegisterPage() {
         throw new Error(errData.detail || "Erreur lors de l'inscription")
       }
 
-      // Inscription réussie : afficher le message de succès puis rediriger
       setSuccess("✅ Votre compte a été créé avec succès. Redirection en cours...")
-      
-      // Redirection après 2 secondes pour laisser le temps de voir le message
-      setTimeout(() => {
-        router.push("/auth/login")
-      }, 2000)
-
+      setTimeout(() => router.push("/auth/login"), 2000)
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -117,14 +113,14 @@ export default function RegisterPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">Prénom</Label>
+                  <Label htmlFor="first_name">Prénom</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
-                      id="firstName"
-                      name="firstName"
+                      id="first_name"
+                      name="first_name"
                       placeholder="Jean"
-                      value={formData.firstName}
+                      value={formData.first_name}
                       onChange={handleChange}
                       className="pl-10"
                       required
@@ -133,14 +129,14 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Nom</Label>
+                  <Label htmlFor="last_name">Nom</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
-                      id="lastName"
-                      name="lastName"
+                      id="last_name"
+                      name="last_name"
                       placeholder="Dupont"
-                      value={formData.lastName}
+                      value={formData.last_name}
                       onChange={handleChange}
                       className="pl-10"
                       required
@@ -205,7 +201,6 @@ export default function RegisterPage() {
               <Button type="submit" className="w-full" disabled={isLoading || success !== ""}>
                 {isLoading ? "Création du compte..." : "Créer mon compte"}
               </Button>
-
               <div className="text-center text-sm">
                 <span className="text-gray-600">Déjà un compte ? </span>
                 <Link href="/auth/login" className="text-blue-600 hover:underline font-medium">

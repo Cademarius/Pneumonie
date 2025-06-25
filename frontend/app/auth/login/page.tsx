@@ -1,6 +1,5 @@
 "use client"
 
-import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -14,51 +13,52 @@ import { Stethoscope, Mail, Lock, AlertCircle } from "lucide-react"
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
+  
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setIsLoading(true)
-  setError("")
+    e.preventDefault()
+    setIsLoading(true)
+    setError("")
 
-  if (!email || !password) {
-    setError("Veuillez remplir tous les champs")
-    setIsLoading(false)
-    return
-  }
-
-  try {
-    const res = await fetch("http://127.0.0.1:8000/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: email, password })
-    })
-
-    if (!res.ok) {
-      const errData = await res.json()
-      throw new Error(errData.detail || "Identifiants invalides")
+    if (!email || !password) {
+      setError("Veuillez remplir tous les champs")
+      setIsLoading(false)
+      return
     }
 
-    const data = await res.json()
-    // ✅ Récupère le token ici
-    const { access_token } = data
+  try {
+      const res = await fetch("http://127.0.0.1:8000/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: email, password }),
+      })
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || "Identifiants invalides")
+      }
 
-    // ✅ Stocke le token et les infos user
-    localStorage.setItem("isAuthenticated", "true")
-    localStorage.setItem("access_token", access_token) 
-    localStorage.setItem("userEmail", email)
-    localStorage.setItem("userName", `Dr. ${email.split("@")[0]}`)
+      const data = await res.json()
+      localStorage.setItem("access_token", data.access_token)
 
-    router.push("/dashboard")
-  } catch (e: any) {
-    setError(e.message)
-  } finally {
-    setIsLoading(false)
+      const profile = await fetch("http://127.0.0.1:8000/auth/me", {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      }).then((res) => res.json())
+
+      localStorage.setItem("first_name", profile.first_name || "")
+      localStorage.setItem("last_name", profile.last_name || "")
+      localStorage.setItem("userEmail", profile.email || "")
+      localStorage.setItem("isAuthenticated", "true")
+
+      router.push("/dashboard")
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setIsLoading(false)
+    }
   }
-}
-
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -124,7 +124,6 @@ export default function LoginPage() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Connexion..." : "Se connecter"}
               </Button>
-
               <div className="text-center text-sm">
                 <span className="text-gray-600">Pas encore de compte ? </span>
                 <Link href="/auth/register" className="text-blue-600 hover:underline font-medium">

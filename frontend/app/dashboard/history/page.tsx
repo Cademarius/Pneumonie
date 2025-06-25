@@ -25,7 +25,16 @@ import {
   Target,
   TrendingUp,
   FileDown,
+  User,
+  Users,
 } from "lucide-react"
+
+interface PatientInfo {
+  nom: string
+  prenom: string
+  age?: number
+  sexe?: string
+}
 
 interface AnalysisRecord {
   id: string
@@ -34,6 +43,7 @@ interface AnalysisRecord {
   confidence: "high" | "medium" | "low"
   timestamp: Date
   fileName: string
+  patient: PatientInfo
   imageUrl?: string
 }
 
@@ -48,6 +58,7 @@ export default function HistoryPage() {
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [exportOptions, setExportOptions] = useState({
     includeDate: true,
+    includePatientName: true,
     includeFileName: true,
     includeVerdict: true,
     includeProbability: true,
@@ -81,7 +92,12 @@ export default function HistoryPage() {
           probability: item.probability,
           confidence: item.confidence,
           timestamp: new Date(item.timestamp),
-          // Modifié ici pour utiliser la vraie URL de l'image
+          patient: {
+            nom: item.patient?.nom || 'Non renseigné',
+            prenom: item.patient?.prenom || 'Non renseigné',
+            age: item.patient?.age,
+            sexe: item.patient?.sexe,
+          },
           imageUrl: `http://127.0.0.1:8000/uploads/${item.file_name}`,
         }))
         setAnalyses(processedHistory)
@@ -98,7 +114,10 @@ export default function HistoryPage() {
     let filtered = analyses
 
     if (searchTerm) {
-      filtered = filtered.filter((analysis) => analysis.fileName.toLowerCase().includes(searchTerm.toLowerCase()))
+      filtered = filtered.filter((analysis) => 
+        analysis.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        `${analysis.patient.prenom} ${analysis.patient.nom}`.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     }
 
     if (filterVerdict !== "all") {
@@ -122,6 +141,10 @@ export default function HistoryPage() {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date)
+  }
+
+  const getPatientFullName = (patient: PatientInfo) => {
+    return `${patient.prenom} ${patient.nom}`
   }
 
   const getVerdictBadge = (verdict: string) => {
@@ -159,15 +182,22 @@ export default function HistoryPage() {
     doc.text("Rapport d'analyse radiographique", 14, 22)
 
     doc.setFontSize(12)
-    doc.text(`Nom du fichier : ${analysis.fileName}`, 14, 40)
-    doc.text(`Date : ${formatDate(analysis.timestamp)}`, 14, 50)
-    doc.text(`Résultat : ${analysis.verdict === "positive" ? "Pneumonie détectée" : "Normal"}`, 14, 60)
-    doc.text(`Probabilité : ${analysis.probability}%`, 14, 70)
+    doc.text(`Patient : ${getPatientFullName(analysis.patient)}`, 14, 40)
+    if (analysis.patient.age) {
+      doc.text(`Âge : ${analysis.patient.age} ans`, 14, 50)
+    }
+    if (analysis.patient.sexe) {
+      doc.text(`Sexe : ${analysis.patient.sexe}`, 14, 60)
+    }
+    doc.text(`Nom du fichier : ${analysis.fileName}`, 14, 70)
+    doc.text(`Date : ${formatDate(analysis.timestamp)}`, 14, 80)
+    doc.text(`Résultat : ${analysis.verdict === "positive" ? "Pneumonie détectée" : "Normal"}`, 14, 90)
+    doc.text(`Probabilité : ${analysis.probability}%`, 14, 100)
     const confidenceLabel =
       analysis.confidence === "high" ? "Élevée" : analysis.confidence === "medium" ? "Moyenne" : "Faible"
-    doc.text(`Niveau de confiance : ${confidenceLabel}`, 14, 80)
+    doc.text(`Niveau de confiance : ${confidenceLabel}`, 14, 110)
 
-    doc.save(`rapport-${analysis.fileName}-${Date.now()}.pdf`)
+    doc.save(`rapport-${analysis.patient.nom}-${analysis.patient.prenom}-${Date.now()}.pdf`)
   }
 
   const handleExportCSV = () => {
@@ -196,6 +226,7 @@ export default function HistoryPage() {
     // Créer les en-têtes CSV
     const headers = []
     if (exportOptions.includeDate) headers.push("Date")
+    if (exportOptions.includePatientName) headers.push("Patient")
     if (exportOptions.includeFileName) headers.push("Fichier")
     if (exportOptions.includeVerdict) headers.push("Résultat")
     if (exportOptions.includeProbability) headers.push("Probabilité")
@@ -207,6 +238,7 @@ export default function HistoryPage() {
       ...dataToExport.map((analysis) => {
         const row = []
         if (exportOptions.includeDate) row.push(`"${formatDate(analysis.timestamp)}"`)
+        if (exportOptions.includePatientName) row.push(`"${getPatientFullName(analysis.patient)}"`)
         if (exportOptions.includeFileName) row.push(`"${analysis.fileName}"`)
         if (exportOptions.includeVerdict) row.push(`"${analysis.verdict === "positive" ? "Pneumonie" : "Normal"}"`)
         if (exportOptions.includeProbability) row.push(`"${analysis.probability}%"`)
@@ -226,6 +258,15 @@ export default function HistoryPage() {
     setIsExportDialogOpen(false)
   }
 
+  // Calculer les statistiques par patient
+  const uniquePatients = analyses.reduce((acc, analysis) => {
+    const patientKey = `${analysis.patient.nom}_${analysis.patient.prenom}`
+    if (!acc.has(patientKey)) {
+      acc.add(patientKey)
+    }
+    return acc
+  }, new Set()).size
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
@@ -234,7 +275,7 @@ export default function HistoryPage() {
           <SidebarTrigger />
           <div>
             <h1 className="text-3xl font-bold text-foreground">Historique des Analyses</h1>
-            <p className="text-muted-foreground">Consultez et gérez vos analyses précédentes</p>
+            <p className="text-muted-foreground">Consultez et gérez vos analyses précédentes par patient</p>
           </div>
         </div>
         <Button onClick={() => setIsExportDialogOpen(true)} className="hover-lift">
@@ -244,9 +285,10 @@ export default function HistoryPage() {
       </div>
 
       {/* Statistiques rapides */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {[
           { icon: History, label: "Total analyses", value: analyses.length, color: "text-blue-600" },
+          { icon: Users, label: "Patients uniques", value: uniquePatients, color: "text-indigo-600" },
           {
             icon: Calendar,
             label: "Normales",
@@ -294,7 +336,7 @@ export default function HistoryPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Rechercher par nom de fichier..."
+                  placeholder="Rechercher par nom de patient ou fichier..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 transition-all-smooth"
@@ -323,7 +365,7 @@ export default function HistoryPage() {
             <FileText className="h-5 w-5" />
             <span>Analyses ({filteredAnalyses.length})</span>
           </CardTitle>
-          <CardDescription>Liste de toutes vos analyses de radiographies</CardDescription>
+          <CardDescription>Liste de toutes vos analyses de radiographies par patient</CardDescription>
         </CardHeader>
         <CardContent>
           {currentAnalyses.length === 0 ? (
@@ -347,13 +389,18 @@ export default function HistoryPage() {
                       </TableHead>
                       <TableHead className="font-semibold">
                         <div className="flex items-center space-x-2">
-                          <ImageIcon className="h-4 w-4" />
-                          <span>Fichier</span>
+                          <User className="h-4 w-4" />
+                          <span>Patient</span>
                         </div>
                       </TableHead>
                       <TableHead className="font-semibold">Résultat</TableHead>
-                      <TableHead className="font-semibold">Probabilité</TableHead>
                       <TableHead className="font-semibold">Confiance</TableHead>
+                      <TableHead className="font-semibold">
+                        <div className="flex items-center space-x-2">
+                          <ImageIcon className="h-4 w-4" />
+                          <span>Image</span>
+                        </div>
+                      </TableHead>
                       <TableHead className="font-semibold">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -362,15 +409,39 @@ export default function HistoryPage() {
                       <TableRow key={analysis.id} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium">{formatDate(analysis.timestamp)}</TableCell>
                         <TableCell>
-                          <div className="max-w-48 truncate font-medium" title={analysis.fileName}>
-                            {analysis.fileName}
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-foreground">
+                              {getPatientFullName(analysis.patient)}
+                            </span>
+                            {analysis.patient.age && (
+                              <span className="text-sm text-muted-foreground">
+                                {analysis.patient.age} ans
+                                {analysis.patient.sexe && ` • ${analysis.patient.sexe}`}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{getVerdictBadge(analysis.verdict)}</TableCell>
-                        <TableCell>
-                          <span className="font-semibold text-foreground">{analysis.probability}%</span>
-                        </TableCell>
                         <TableCell>{getConfidenceBadge(analysis.confidence)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-12 h-12 rounded border overflow-hidden bg-muted">
+                              <img
+                                src={analysis.imageUrl}
+                                alt="Aperçu"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  target.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center text-muted-foreground">📷</div>';
+                                }}
+                              />
+                            </div>
+                            <div className="max-w-24 truncate text-sm text-muted-foreground" title={analysis.fileName}>
+                              {analysis.fileName}
+                            </div>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button
@@ -452,7 +523,6 @@ export default function HistoryPage() {
                     alt="Radiographie analysée"
                     className="max-w-full h-auto rounded-lg border shadow-lg max-h-96 object-contain"
                     onError={(e) => {
-                      // Fallback si l'image ne charge pas
                       const target = e.target as HTMLImageElement;
                       target.src = "/placeholder.svg?height=300&width=400&text=Image+non+disponible";
                     }}
@@ -465,20 +535,33 @@ export default function HistoryPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Informations générales</CardTitle>
+                    <CardTitle className="text-lg flex items-center space-x-2">
+                      <User className="h-5 w-5" />
+                      <span>Informations Patient</span>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Nom du fichier:</span>
-                      <span className="font-medium text-foreground">{selectedAnalysis.fileName}</span>
+                      <span className="text-muted-foreground">Nom complet:</span>
+                      <span className="font-medium text-foreground">
+                        {getPatientFullName(selectedAnalysis.patient)}
+                      </span>
                     </div>
+                    {selectedAnalysis.patient.age && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Âge:</span>
+                        <span className="font-medium text-foreground">{selectedAnalysis.patient.age} ans</span>
+                      </div>
+                    )}
+                    {selectedAnalysis.patient.sexe && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Sexe:</span>
+                        <span className="font-medium text-foreground">{selectedAnalysis.patient.sexe}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Date d'analyse:</span>
                       <span className="font-medium text-foreground">{formatDate(selectedAnalysis.timestamp)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ID d'analyse:</span>
-                      <span className="font-mono text-sm text-foreground">{selectedAnalysis.id}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -499,6 +582,14 @@ export default function HistoryPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Niveau de confiance:</span>
                       {getConfidenceBadge(selectedAnalysis.confidence)}
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nom du fichier:</span>
+                      <span className="font-mono text-sm text-foreground">{selectedAnalysis.fileName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ID d'analyse:</span>
+                      <span className="font-mono text-sm text-foreground">{selectedAnalysis.id}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -539,6 +630,7 @@ export default function HistoryPage() {
               <div className="space-y-3">
                 {[
                   { key: "includeDate", label: "Date et heure" },
+                  { key: "includePatientName", label: "Nom du patient" },
                   { key: "includeFileName", label: "Nom du fichier" },
                   { key: "includeVerdict", label: "Résultat du diagnostic" },
                   { key: "includeProbability", label: "Probabilité" },
