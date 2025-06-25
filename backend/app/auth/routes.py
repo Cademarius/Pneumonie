@@ -3,13 +3,9 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 
-from app.auth.schemas import UserCreate, Token, UserUpdate, PasswordChange
+from app.auth.schemas import UserCreate, Token, UserUpdate, PasswordChange, UserLogin
 from app.auth import crud
-from app.auth.security import (
-    create_access_token,
-    SECRET_KEY,
-    ALGORITHM,
-)
+from app.auth.security import create_access_token, SECRET_KEY, ALGORITHM
 from app.auth.models import User
 from app.database import get_db
 
@@ -41,14 +37,26 @@ def get_current_user(
 
 @router.post("/register", response_model=Token)
 def register(user: UserCreate, db: Session = Depends(get_db)):
+    print(f"Data reçue dans /register : {user.dict()}")
     if crud.get_user_by_username(db, user.username):
         raise HTTPException(status_code=400, detail="User already exists")
-    new_user = crud.create_user(db, user.username, user.password)
+
+    new_user = crud.create_user(
+        db,
+        username=user.username,
+        password=user.password,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email
+    )
     access_token = create_access_token({"sub": new_user.username})
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=access_token,
+        token_type="bearer"
+    )
 
 @router.post("/login", response_model=Token)
-def login(user: UserCreate, db: Session = Depends(get_db)):
+def login(user: UserLogin, db: Session = Depends(get_db)):
     auth_user = crud.authenticate_user(db, user.username, user.password)
     if not auth_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -79,7 +87,22 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    success = crud.update_user_password(db, current_user, data.current_password, data.new_password)
+    success = crud.update_user_password(
+        db, current_user, data.current_password, data.new_password
+    )
     if not success:
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
+        raise HTTPException(
+            status_code=400,
+            detail="Current password is incorrect"
+        )
     return {"message": "Password updated successfully"}
+
+@router.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "email": current_user.email,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "username": current_user.username,
+    }
+
