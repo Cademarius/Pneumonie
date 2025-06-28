@@ -67,6 +67,7 @@ export default function HistoryPage() {
   })
 
   const itemsPerPage = 10
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
@@ -75,7 +76,7 @@ export default function HistoryPage() {
       return
     }
 
-    fetch('http://127.0.0.1:8000/history/', {
+    fetch(`${baseUrl}/history`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -98,7 +99,7 @@ export default function HistoryPage() {
             age: item.patient?.age,
             sexe: item.patient?.sexe,
           },
-          imageUrl: `http://127.0.0.1:8000/uploads/${item.file_name}`,
+        imageUrl: `${baseUrl}/uploads/${item.file_name}`,
         }))
         setAnalyses(processedHistory)
         setFilteredAnalyses(processedHistory)

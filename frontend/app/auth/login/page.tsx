@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +31,7 @@ export default function LoginPage() {
     }
 
   try {
-      const res = await fetch("http://127.0.0.1:8000/auth/login", {
+      const res = await fetch(`${baseUrl}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: email, password }),
@@ -43,7 +44,7 @@ export default function LoginPage() {
       const data = await res.json()
       localStorage.setItem("access_token", data.access_token)
 
-      const profile = await fetch("http://127.0.0.1:8000/auth/me", {
+      const profile = await fetch(`${baseUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
       }).then((res) => res.json())
 

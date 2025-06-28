@@ -19,9 +19,6 @@ env/
 # Fichiers de configuration locaux
 .env
 
-# PyTorch/Modèles IA
-*.pth
-
 # VSCode
 .vscode/
 

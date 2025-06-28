@@ -19,6 +19,7 @@ interface AnalysisResult {
   verdict: "positive" | "negative";
   timestamp: Date;
   fileName: string;
+  heatmapUrl?: string;
   probability?: number;   // si tu veux sauvegarder aussi ces champs
   confidence?: string;
   patientInfo: {
@@ -124,13 +125,14 @@ const handleAnalyze = async () => {
     }
 
     const formData = new FormData();
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
     formData.append('file', uploadedFile);
 formData.append('nom', patientInfo.nom);
 formData.append('prenom', patientInfo.prenom);
 formData.append('age', patientInfo.age.toString()); // age doit être string ici
 formData.append('sexe', patientInfo.sexe);
 
-    const response = await fetch('http://127.0.0.1:8000/predictions/predict', {
+    const response = await fetch(`${baseUrl}/predictions/predict`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -151,6 +153,7 @@ formData.append('sexe', patientInfo.sexe);
       confidence: data.confidence,
       timestamp: new Date(),
       fileName: data.file_name,
+      heatmapUrl: data.heatmap_url,
       patientInfo: { ...patientInfo }
     }
 
@@ -410,13 +413,14 @@ formData.append('sexe', patientInfo.sexe);
                           </div>
                         </Alert>
 
-                        <div className="flex justify-center mb-6">
-                          <img
-                            src={previewUrl || "/placeholder.svg?height=300&width=500"}
-                            alt="Radiographie analysée"
-                            className="w-64 h-48 object-contain rounded border"
-                          />
-                        </div>
+                       <div className="flex justify-center mb-6">
+                         <img
+                          src={analysisResult?.heatmapUrl || previewUrl || "/placeholder.svg?height=300&width=500"}
+                          alt="Résultat IA"
+                          className="w-64 h-48 object-contain rounded border"
+                        />
+                       </div>
+
 
                       </div>
 

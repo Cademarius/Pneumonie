@@ -22,6 +22,8 @@ export default function RegisterPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -52,7 +54,7 @@ export default function RegisterPage() {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/register", {
+      const res = await fetch(`${baseUrl}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
