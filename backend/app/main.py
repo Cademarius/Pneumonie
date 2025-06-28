@@ -14,7 +14,10 @@ app = FastAPI(title="Pneumonia Backend")
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",                     # Pour développement local
+        "https://pneumonie-xi.vercel.app"           # ✅ Pour Vercel en production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
