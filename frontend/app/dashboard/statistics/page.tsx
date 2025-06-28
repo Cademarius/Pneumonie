@@ -23,45 +23,119 @@ import {
   Activity,
   Calendar,
   Target,
-  PieChartIcon,
-  LineChartIcon,
+  PieChart as PieChartIcon,
+  TrendingUp as LineChartIcon,
   Download,
   RefreshCw,
   Zap,
   BarChart3,
+  AlertCircle,
 } from "lucide-react"
 
+interface Patient {
+  id: number
+  nom: string
+  prenom: string
+  age: number
+  sexe: string
+}
+
 interface AnalysisRecord {
-  verdict: "positive" | "negative"
+  id: number
+  file_name: string
+  verdict: string
   probability: number
-  confidence: "high" | "medium" | "low"
-  timestamp: Date
-  fileName: string
+  confidence: string
+  timestamp: string
+  patient: Patient
+  imageUrl: string
 }
 
 export default function StatisticsPage() {
   const [analyses, setAnalyses] = useState<AnalysisRecord[]>([])
   const [timeRange, setTimeRange] = useState("6months")
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fonction pour récupérer les données depuis l'API
+  const fetchAnalysisHistory = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const token = localStorage.getItem("access_token")
+      if (!token) {
+        throw new Error("Token d'authentification manquant")
+      }
+
+      const response = await fetch("http://localhost:8000/history/", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Session expirée, veuillez vous reconnecter")
+        }
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      setAnalyses(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors du chargement des données")
+      console.error("Erreur lors de la récupération des données:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const history = JSON.parse(localStorage.getItem("analysisHistory") || "[]")
-    const processedHistory = history.map((item: any) => ({
-      ...item,
-      timestamp: new Date(item.timestamp),
-    }))
-    setAnalyses(processedHistory)
+    fetchAnalysisHistory()
   }, [])
 
-  // Calculs des métriques
-  const totalAnalyses = analyses.length
-  const pneumoniaDetected = analyses.filter((a) => a.verdict === "positive").length
-  const normalCases = analyses.filter((a) => a.verdict === "negative").length
-  const detectionRate = totalAnalyses > 0 ? ((pneumoniaDetected / totalAnalyses) * 100).toFixed(1) : "0"
-  const avgProbability =
-    totalAnalyses > 0 ? (analyses.reduce((sum, a) => sum + a.probability, 0) / totalAnalyses).toFixed(1) : "0"
+  // Filtrage par période
+  const getFilteredAnalyses = () => {
+    const now = new Date()
+    const cutoffDate = new Date()
+    
+    switch (timeRange) {
+      case "6months":
+        cutoffDate.setMonth(now.getMonth() - 6)
+        break
+      case "year":
+        cutoffDate.setFullYear(now.getFullYear() - 1)
+        break
+      case "all":
+      default:
+        return analyses
+    }
+    
+    return analyses.filter(analysis => 
+      new Date(analysis.timestamp) >= cutoffDate
+    )
+  }
 
-  // Données pour le graphique en secteurs interactif
+  const filteredAnalyses = getFilteredAnalyses()
+
+  // Calculs des métriques basés sur les données réelles de l'API
+  const totalAnalyses = filteredAnalyses.length
+  const pneumoniaDetected = filteredAnalyses.filter((a) => a.verdict.toLowerCase() === "positive" || a.verdict.toLowerCase() === "pneumonia").length
+  const normalCases = filteredAnalyses.filter((a) => a.verdict.toLowerCase() === "negative" || a.verdict.toLowerCase() === "normal").length
+  const detectionRate = totalAnalyses > 0 ? ((pneumoniaDetected / totalAnalyses) * 100).toFixed(1) : "0"
+  const avgProbability = totalAnalyses > 0 ? (filteredAnalyses.reduce((sum, a) => sum + a.probability, 0) / totalAnalyses).toFixed(1) : "0"
+
+  // Calcul de la distribution de confiance
+  const confidenceDistribution = {
+    high: filteredAnalyses.filter(a => a.confidence.toLowerCase() === "high").length,
+    medium: filteredAnalyses.filter(a => a.confidence.toLowerCase() === "medium").length,
+    low: filteredAnalyses.filter(a => a.confidence.toLowerCase() === "low").length,
+  }
+
+  // Données pour le graphique en secteurs
   const pieData = [
     {
       name: "Radiographies Normales",
@@ -81,40 +155,45 @@ export default function StatisticsPage() {
     },
   ]
 
-  // Données pour l'évolution temporelle enrichie
+  // Génération des données temporelles basées sur les vraies données
   const generateTimelineData = () => {
-    const months = [
-      "Janvier",
-      "Février",
-      "Mars",
-      "Avril",
-      "Mai",
-      "Juin",
-      "Juillet",
-      "Août",
-      "Septembre",
-      "Octobre",
-      "Novembre",
-      "Décembre",
-    ]
+    const monthlyStats = new Map()
+    
+    filteredAnalyses.forEach(analysis => {
+      const date = new Date(analysis.timestamp)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthName = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+      
+      if (!monthlyStats.has(monthKey)) {
+        monthlyStats.set(monthKey, {
+          month: monthName,
+          analyses: 0,
+          pneumonies: 0,
+          totalProbability: 0,
+          highConfidence: 0,
+        })
+      }
+      
+      const stats = monthlyStats.get(monthKey)
+      stats.analyses += 1
+      stats.totalProbability += analysis.probability
+      
+      if (analysis.verdict.toLowerCase() === "positive" || analysis.verdict.toLowerCase() === "pneumonia") {
+        stats.pneumonies += 1
+      }
+      
+      if (analysis.confidence.toLowerCase() === "high") {
+        stats.highConfidence += 1
+      }
+    })
 
-    // Données simulées plus réalistes
-    const baseData = [
-      { month: "Janvier", analyses: 15, pneumonies: 3, precision: 94.2, nouveauxCas: 2 },
-      { month: "Février", analyses: 22, pneumonies: 5, precision: 95.1, nouveauxCas: 4 },
-      { month: "Mars", analyses: 28, pneumonies: 7, precision: 96.3, nouveauxCas: 6 },
-      { month: "Avril", analyses: 35, pneumonies: 8, precision: 94.8, nouveauxCas: 5 },
-      { month: "Mai", analyses: 42, pneumonies: 11, precision: 97.2, nouveauxCas: 8 },
-      {
-        month: "Juin",
-        analyses: totalAnalyses || 48,
-        pneumonies: pneumoniaDetected || 12,
-        precision: 95.7,
-        nouveauxCas: 9,
-      },
-    ]
-
-    return baseData
+    return Array.from(monthlyStats.values())
+      .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+      .map(stats => ({
+        ...stats,
+        precision: stats.analyses > 0 ? ((stats.highConfidence / stats.analyses) * 100).toFixed(1) : 0,
+        avgProbability: stats.analyses > 0 ? (stats.totalProbability / stats.analyses).toFixed(1) : 0,
+      }))
   }
 
   const timelineData = generateTimelineData()
@@ -126,9 +205,12 @@ export default function StatisticsPage() {
       normalCases,
       detectionRate: `${detectionRate}%`,
       avgProbability: `${avgProbability}%`,
+      confidenceDistribution,
       generatedAt: new Date().toISOString(),
+      timeRange,
       pieData,
       timelineData,
+      detailedAnalyses: filteredAnalyses,
     }
 
     const dataStr = JSON.stringify(statsData, null, 2)
@@ -136,7 +218,7 @@ export default function StatisticsPage() {
     const url = URL.createObjectURL(dataBlob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `statistiques-pneumodetect-${Date.now()}.json`
+    link.download = `statistiques-pneumodetect-${new Date().toISOString().split('T')[0]}.json`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -171,6 +253,37 @@ export default function StatisticsPage() {
     )
   }
 
+  if (loading) {
+    return (
+      <div className="p-6 space-y-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-lg font-medium">Chargement des statistiques...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 space-y-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
+            <p className="text-lg font-medium text-red-600 mb-2">Erreur de chargement</p>
+            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <Button onClick={fetchAnalysisHistory} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Réessayer
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 space-y-8 animate-fade-in">
       {/* Header */}
@@ -179,7 +292,9 @@ export default function StatisticsPage() {
           <SidebarTrigger />
           <div>
             <h1 className="text-3xl font-bold text-foreground">Tableau de Bord Analytique</h1>
-            <p className="text-muted-foreground">Analyse détaillée de vos données de détection pneumonique</p>
+            <p className="text-muted-foreground">
+              Analyse de {totalAnalyses} radiographies avec {pneumoniaDetected} détections de pneumonie
+            </p>
           </div>
         </div>
         <div className="flex space-x-3">
@@ -187,7 +302,7 @@ export default function StatisticsPage() {
             <Download className="h-4 w-4 mr-2" />
             Exporter
           </Button>
-          <Button variant="outline" className="hover-lift">
+          <Button variant="outline" onClick={fetchAnalysisHistory} className="hover-lift">
             <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
@@ -216,37 +331,33 @@ export default function StatisticsPage() {
             icon: Activity,
             label: "Total Analyses",
             value: totalAnalyses,
-            change: "+12%",
+            change: timeRange === "all" ? "Toutes" : `${timeRange}`,
             color: "text-blue-600",
             bgColor: "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20",
-            trend: "up",
           },
           {
             icon: Target,
             label: "Pneumonies Détectées",
             value: pneumoniaDetected,
-            change: "+8%",
+            change: `${detectionRate}%`,
             color: "text-red-600",
             bgColor: "bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/20 dark:to-red-900/20",
-            trend: "up",
           },
           {
             icon: TrendingUp,
-            label: "Taux de Détection",
-            value: `${detectionRate}%`,
-            change: "+2.1%",
+            label: "Probabilité Moyenne",
+            value: `${avgProbability}%`,
+            change: "Moyenne",
             color: "text-green-600",
             bgColor: "bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20",
-            trend: "up",
           },
           {
             icon: Zap,
-            label: "Précision Moyenne",
-            value: `${avgProbability}%`,
-            change: "+1.5%",
+            label: "Confiance Élevée",
+            value: confidenceDistribution.high,
+            change: `${totalAnalyses > 0 ? ((confidenceDistribution.high / totalAnalyses) * 100).toFixed(1) : 0}%`,
             color: "text-purple-600",
             bgColor: "bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20",
-            trend: "up",
           },
         ].map((stat, index) => (
           <Card key={index} className="hover-lift transition-all-smooth border-0 shadow-lg">
@@ -274,7 +385,7 @@ export default function StatisticsPage() {
 
       {/* Graphiques principaux */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Répartition des diagnostics - Graphique en secteurs interactif */}
+        {/* Répartition des diagnostics */}
         <Card className="hover-lift transition-all-smooth shadow-xl border-0">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center space-x-3 text-xl">
@@ -284,7 +395,7 @@ export default function StatisticsPage() {
               <span>Répartition des Diagnostics</span>
             </CardTitle>
             <CardDescription className="text-base">
-              Distribution interactive entre radiographies normales et pneumonies détectées
+              Distribution entre radiographies normales et pneumonies détectées
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
@@ -352,7 +463,7 @@ export default function StatisticsPage() {
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Légende interactive personnalisée */}
+                {/* Légende personnalisée */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pieData.map((entry, index) => (
                     <div
@@ -394,7 +505,7 @@ export default function StatisticsPage() {
           </CardContent>
         </Card>
 
-        {/* Évolution temporelle - Graphique linéaire avancé */}
+        {/* Évolution temporelle */}
         <Card className="hover-lift transition-all-smooth shadow-xl border-0">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center space-x-3 text-xl">
@@ -404,142 +515,119 @@ export default function StatisticsPage() {
               <span>Évolution Temporelle</span>
             </CardTitle>
             <CardDescription className="text-base">
-              Tendances des analyses et détections de pneumonies au fil du temps
+              Tendances des analyses et détections au fil du temps
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={timelineData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                <defs>
-                  <linearGradient id="analysesGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="pneumoniesGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="precisionGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 12 }}
-                  tickLine={{ stroke: "#6b7280" }}
-                  axisLine={{ stroke: "#6b7280" }}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 12 }}
-                  tickLine={{ stroke: "#6b7280" }}
-                  axisLine={{ stroke: "#6b7280" }}
-                  label={{ value: "Nombre d'analyses", angle: -90, position: "insideLeft" }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 12 }}
-                  tickLine={{ stroke: "#6b7280" }}
-                  axisLine={{ stroke: "#6b7280" }}
-                  label={{ value: "Précision (%)", angle: 90, position: "insideRight" }}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border">
-                          <p className="font-semibold text-foreground mb-2">{label}</p>
-                          {payload.map((entry, index) => (
-                            <p key={index} className="text-sm" style={{ color: entry.color }}>
-                              {entry.name}: {entry.value}
-                              {entry.dataKey === "precision" ? "%" : ""}
-                            </p>
-                          ))}
-                        </div>
-                      )
-                    }
-                    return null
-                  }}
-                />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="analyses"
-                  stroke="#3b82f6"
-                  strokeWidth={3}
-                  dot={{ fill: "#3b82f6", strokeWidth: 2, r: 6 }}
-                  activeDot={{ r: 8, stroke: "#3b82f6", strokeWidth: 2, fill: "#ffffff" }}
-                  name="Total analyses"
-                  animationDuration={1500}
-                />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="pneumonies"
-                  stroke="#ef4444"
-                  strokeWidth={3}
-                  dot={{ fill: "#ef4444", strokeWidth: 2, r: 6 }}
-                  activeDot={{ r: 8, stroke: "#ef4444", strokeWidth: 2, fill: "#ffffff" }}
-                  name="Pneumonies détectées"
-                  animationDuration={1500}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="precision"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: "#10b981", strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, stroke: "#10b981", strokeWidth: 2, fill: "#ffffff" }}
-                  name="Précision du modèle"
-                  animationDuration={1500}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {timelineData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={timelineData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#6b7280" }}
+                    axisLine={{ stroke: "#6b7280" }}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#6b7280" }}
+                    axisLine={{ stroke: "#6b7280" }}
+                    label={{ value: "Nombre", angle: -90, position: "insideLeft" }}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border">
+                            <p className="font-semibold text-foreground mb-2">{label}</p>
+                            {payload.map((entry, index) => (
+                              <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                {entry.name}: {entry.value}
+                              </p>
+                            ))}
+                          </div>
+                        )
+                      }
+                      return null
+                    }}
+                  />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="analyses"
+                    stroke="#3b82f6"
+                    strokeWidth={3}
+                    dot={{ fill: "#3b82f6", strokeWidth: 2, r: 6 }}
+                    activeDot={{ r: 8, stroke: "#3b82f6", strokeWidth: 2, fill: "#ffffff" }}
+                    name="Total analyses"
+                    animationDuration={1500}
+                  />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="pneumonies"
+                    stroke="#ef4444"
+                    strokeWidth={3}
+                    dot={{ fill: "#ef4444", strokeWidth: 2, r: 6 }}
+                    activeDot={{ r: 8, stroke: "#ef4444", strokeWidth: 2, fill: "#ffffff" }}
+                    name="Pneumonies détectées"
+                    animationDuration={1500}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-400 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <LineChartIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg">Pas assez de données</p>
+                  <p className="text-sm">Effectuez plus d'analyses pour voir l'évolution</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-            {/* Légende et métriques */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Section supplémentaire : Répartition par niveau de confiance */}
+      {totalAnalyses > 0 && (
+        <Card className="hover-lift transition-all-smooth shadow-xl border-0">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-3 text-xl">
+              <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg">
+                <Target className="h-6 w-6 text-white" />
+              </div>
+              <span>Répartition par Niveau de Confiance</span>
+            </CardTitle>
+            <CardDescription>
+              Distribution des analyses selon le niveau de confiance du modèle
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
-                {
-                  label: "Analyses totales",
-                  value: timelineData[timelineData.length - 1]?.analyses || 0,
-                  color: "#3b82f6",
-                  trend: "+15%",
-                },
-                {
-                  label: "Pneumonies détectées",
-                  value: timelineData[timelineData.length - 1]?.pneumonies || 0,
-                  color: "#ef4444",
-                  trend: "+8%",
-                },
-                {
-                  label: "Précision moyenne",
-                  value: `${timelineData[timelineData.length - 1]?.precision || 95}%`,
-                  color: "#10b981",
-                  trend: "+2.1%",
-                },
-              ].map((metric, index) => (
-                <div key={index} className="p-3 bg-muted/30 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: metric.color }} />
-                    <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
+                { label: "Confiance Élevée", value: confidenceDistribution.high, color: "#10b981", level: "high" },
+                { label: "Confiance Moyenne", value: confidenceDistribution.medium, color: "#f59e0b", level: "medium" },
+                { label: "Confiance Faible", value: confidenceDistribution.low, color: "#ef4444", level: "low" },
+              ].map((item, index) => (
+                <div key={index} className="p-6 bg-muted/30 rounded-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-foreground">{item.label}</h3>
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: item.color }} />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xl font-bold text-foreground">{metric.value}</p>
-                    <Badge variant="secondary" className="text-xs">
-                      {metric.trend}
-                    </Badge>
+                  <div className="space-y-2">
+                    <p className="text-3xl font-bold text-foreground">{item.value}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {totalAnalyses > 0 ? ((item.value / totalAnalyses) * 100).toFixed(1) : 0}% du total
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
   )
 }
