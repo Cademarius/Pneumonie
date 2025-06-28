@@ -415,10 +415,11 @@ formData.append('sexe', patientInfo.sexe);
 
                        <div className="flex justify-center mb-6">
                          <img
-                          src={analysisResult?.heatmapUrl || previewUrl || "/placeholder.svg?height=300&width=500"}
-                          alt="Résultat IA"
-                          className="w-64 h-48 object-contain rounded border"
-                        />
+                            src={analysisResult?.heatmapUrl || previewUrl || "/placeholder.svg?height=300&width=500"}
+                            alt="Résultat IA"
+                            style={{ maxHeight: "400px", width: "100%", objectFit: "contain" }}
+                            className="rounded border"
+                          />
                        </div>
 
 
